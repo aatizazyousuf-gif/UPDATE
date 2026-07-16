@@ -1,0 +1,68 @@
+name: Build APK
+
+# Builds a debug APK on every push/PR to main, and lets you trigger it manually
+# from the Actions tab. The finished APK is attached as a downloadable artifact
+# on the workflow run - no Play Store account or paid signing needed.
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # Optional: only writes a value if you've added a GEMINI_API_KEY secret in this repo's
+      # Settings > Secrets and variables > Actions. If you skip this, the build still
+      # succeeds - the app just uses its built-in offline chat responses instead of
+      # calling the real Gemini API. Never commit a real key directly into this file.
+      - name: Write .env from secret (optional, safe to skip)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> .env
+          else
+            echo "No GEMINI_API_KEY secret set - skipping (app will use offline chat responses)."
+          fi
+
+      # Optional: only writes the file if you've added a GOOGLE_SERVICES_JSON secret containing
+      # the full contents of your app/google-services.json (see README's Firebase section).
+      # If you skip this, the build still succeeds - cloud sync just stays disabled.
+      - name: Write google-services.json from secret (optional, safe to skip)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          else
+            echo "No GOOGLE_SERVICES_JSON secret set - skipping (cloud sync stays disabled)."
+          fi
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-monitor-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
