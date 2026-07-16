@@ -1,0 +1,49 @@
+// Copy the contents of this file into: Firebase Console > Firestore Database > Rules,
+// then click "Publish". This is required - without rules like these, Firestore's default
+// rules deny everything (safe, but sync will always fail), and if you ever switch to
+// "test mode" rules instead, ANYONE on the internet could read or erase your data.
+//
+// These rules do two things:
+//   1. Require a signed-in Firebase user (the app signs in anonymously for you, for free)
+//      for anything under /users/{uid}/...
+//   2. Only let that user read/write their OWN uid's data, not anyone else's.
+//   3. Let any signed-in user read the shared /safety_bulletins collection (it's meant to be
+//      the same broadcast content for everyone), but not write to it from the client.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /safety_bulletins/{bulletinId} {
+      allow read: if request.auth != null;
+      allow write: if false; // seeded by the app's first read only; lock this down further
+                              // once you're managing bulletins yourself.
+    }
+
+    // Live ESP32 sensor feed (MQ-2 ppm + MPXV7002DP pressure/flow), one document per physical
+    // device, keyed by its stable chip ID (see firmware). This can't live under
+    // /users/{uid}/... like the rest of a homeowner's data, because the ESP32 authenticates
+    // as its own anonymous account, not as the homeowner - there's no way for it to prove it
+    // IS a specific homeowner without a server-side token-minting step (a Cloud Function),
+    // which needs a paid Firebase plan. Instead, each homeowner "pairs" their meter's device
+    // ID once (stored at /users/{uid}/profile/main), and this rule only lets a signed-in user
+    // read a device's data if that device ID is the one they've paired.
+    //
+    // WRITE is left open to any signed-in (anonymous) user, same limitation as above - there's
+    // no way to restrict "only this specific ESP32" without that same server-side step.
+    // Device IDs derived from the chip's own MAC address (see firmware) aren't guessable in
+    // practice, but a motivated person who somehow learned one could still write fake data to
+    // it. If that's a concern for your use case, that Cloud Function step is the real fix.
+    match /device_telemetry/{deviceId} {
+      allow read: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)/profile/main).data.pairedDeviceId == deviceId;
+      allow write: if request.auth != null;
+    }
+
+    // Everything else is denied by default - do not add a catch-all "allow read, write: if true".
+  }
+}

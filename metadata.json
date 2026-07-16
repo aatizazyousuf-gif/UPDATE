@@ -1,0 +1,6 @@
+{
+  "name": "Gas Monitor",
+  "description": "Smart LPG and gas leakage monitoring app with Homeowner and Supplier modes, real-time safety diagnostics, automated refill ordering, and Gemini-powered tech support chat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
